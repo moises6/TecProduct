@@ -2,13 +2,43 @@
 // Verificar si el usuario ha iniciado sesión
 session_start();
 if (!isset($_SESSION['id_usuario'])) {
-    header(header: 'Location: ../users/login.php');
+    header('Location: ../users/login.php');
     exit;
 }
 
-ini_set(option: 'display_errors', value: 1);
-ini_set(option: 'display_startup_errors', value: 1);
-error_reporting(error_level: E_ALL);
+// Configuración de errores para desarrollo
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Conexión segura a la base de datos
+$dsn = 'mysql:host=localhost;dbproduct';
+$username = 'root';
+$password = '';
+
+try {
+    $pdo = new PDO($dsn, $username, $password);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    echo 'Error al conectar con la base de datos: ' . $e->getMessage();
+    exit;
+}
+
+// Función para obtener todos los productos
+function getAllProducts($pdo)
+{
+    $stmt = $pdo->prepare("SELECT p.id_producto, p.nombre_producto, p.descripcion, p.precio, c.nombre_categoria 
+                           FROM productos p 
+                           JOIN categorias c ON p.id_categoria = c.id_categoria");
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Obtener todos los productos
+$productos = getAllProducts($pdo);
+
+// Cerrar la conexión
+$pdo = null;
 ?>
 
 <!DOCTYPE html>
@@ -43,13 +73,16 @@ error_reporting(error_level: E_ALL);
                 <tbody>
                     <?php foreach ($productos as $producto): ?>
                         <tr>
-                            <td><?php echo $producto['nombre_producto']; ?></td>
-                            <td><?php echo $producto['descripcion']; ?></td>
-                            <td><?php echo $producto['precio']; ?></td>
-                            <td><?php echo $producto['nombre_categoria']; ?></td>
+                            <td><?php echo htmlspecialchars($producto['nombre_producto']); ?></td>
+                            <td><?php echo htmlspecialchars($producto['descripcion']); ?></td>
+                            <td><?php echo htmlspecialchars($producto['precio']); ?></td>
+                            <td><?php echo htmlspecialchars($producto['nombre_categoria']); ?></td>
                             <td>
-                                <a href="edit.php?id_producto=<?php echo $producto['id_producto']; ?>" class="btn btn-warning btn-sm">Editar</a>
-                                <a href="../../controllers/ProductController.php?action=delete&id=<?php echo $producto['id_producto']; ?>" class="btn btn-danger btn-sm">Eliminar</a>
+                                <a href="edit.php?id_producto=<?php echo htmlspecialchars($producto['id_producto']); ?>" class="btn btn-warning btn-sm">Editar</a>
+                                <form action="../../controllers/ProductController.php?action=delete" method="POST" style="display:inline-block;">
+                                    <input type="hidden" name="id_producto" value="<?php echo htmlspecialchars($producto['id_producto']); ?>">
+                                    <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>

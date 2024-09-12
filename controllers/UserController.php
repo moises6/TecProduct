@@ -1,57 +1,103 @@
 <?php
-include_once '../models/User.php';
 
-// Activar la visualización de errores
-ini_set(option: 'display_errors', value: 1);
-ini_set(option: 'display_startup_errors', value: 1);
-error_reporting(error_level: E_ALL);
+declare(strict_types=1);
+
+require_once '../models/User.php';
+require_once '../config/config.php';
 
 class UserController
 {
+    private User $userModel;
+
+    public function __construct(User $userModel)
+    {
+        $this->userModel = $userModel;
+    }
+
+    /**
+     * Método para iniciar sesión
+     */
     public function login(): void
     {
-        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            $nombre_usuario = $_POST['nombre_usuario'];
-            $contraseña = $_POST['contraseña'];
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->redirectToLogin();
+        }
 
-            // Mensajes de depuración (para asegurar que el código está corriendo)
-            echo "Datos recibidos del formulario: Nombre de usuario = $nombre_usuario, Contraseña = $contraseña <br>";
+        $username = filter_input(INPUT_POST, 'nombre_usuario', FILTER_SANITIZE_STRING);
+        $password = filter_input(INPUT_POST, 'contraseña', FILTER_SANITIZE_STRING);
 
-            // Crear instancia del modelo User
-            $userModel = new User();
+        error_log("Intento de inicio de sesión: Usuario = {$username}");
 
-            // Obtener el usuario por nombre de usuario
-            $usuario = $userModel->getUserByUsername(nombre_usuario: $nombre_usuario);
+        $user = $this->userModel->getUserByUsername($username);
 
-            // Verificar si se encontró el usuario y si la contraseña es válida
-            if ($usuario && password_verify(password: $contraseña, hash: $usuario['contraseña'])) {
-                // Iniciar la sesión
-                session_start();
-                $_SESSION['id_usuario'] = $usuario['id_usuario'];
-
-                // Mensaje de éxito para depuración
-                echo "Sesión iniciada correctamente. Redirigiendo...<br>";
-
-                // Asegurar la redirección con una ruta absoluta
-                header(header: 'Location: http://localhost:8080/DWSL-Parcial1/TecProduct/views/products/index.php');
-                exit(); // Asegurar que el script termina aquí
-            } else {
-                // Mostrar mensaje de error si la autenticación falla
-                echo "Usuario o contraseña incorrectos.";
-            }
+        if ($user && password_verify($password, $user['contraseña'])) {
+            $this->startSecureSession($user);
+            $this->redirectToDashboard();
+        } else {
+            error_log("Inicio de sesión fallido");
+            $this->redirectToLogin();
         }
     }
 
+    /**
+     * Método para cerrar sesión
+     */
     public function logout(): void
     {
-        // Iniciar la sesión si no está iniciada
-        session_start();
+        $this->destroySession();
+        $this->redirectToLogin();
+    }
 
-        // Destruir la sesión actual
+    /**
+     * Inicia una sesión segura
+     */
+    private function startSecureSession(array $user): void
+    {
+        session_start([
+            'cookie_lifetime' => 0,
+            'use_strict_mode' => true,
+            'cookie_secure' => true,
+            'cookie_httponly' => true,
+            'cookie_samesite' => 'Strict',
+        ]);
+
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = $user['id_usuario'];
+        $_SESSION['username'] = $user['nombre_usuario'];
+
+        error_log("Sesión iniciada correctamente para el usuario {$user['nombre_usuario']}");
+    }
+
+    /**
+     * Destruye la sesión actual
+     */
+    private function destroySession(): void
+    {
+        session_start();
+        session_unset();
         session_destroy();
 
-        // Redirigir al formulario de inicio de sesión
-        header(header: 'Location: http://localhost:8080/DWSL-Parcial1/TecProduct/views/users/login.php');
-        exit(); // Terminar el script después de la redirección
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
+
+        error_log("Sesión destruida");
+    }
+
+    /**
+     * Redirige al usuario a la página de login
+     */
+    private function redirectToLogin(): void
+    {
+        header('Location: http://localhost:8080/DWSL-Parcial1/TecProduct/views/users/login.php');
+        exit();
+    }
+
+    /**
+     * Redirige al usuario al dashboard
+     */
+    private function redirectToDashboard(): void
+    {
+        header('Location: http://localhost:8080/DWSL-Parcial1/TecProduct/views/products/index.php');
+        exit();
     }
 }
